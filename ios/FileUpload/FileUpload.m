@@ -4,12 +4,16 @@
 #import <MobileCoreServices/MobileCoreServices.h>
 #import <UIKit/UIKit.h>
 #import <AssetsLibrary/AssetsLibrary.h>
+#import "RCTImageLoader.h"
+#import "RCTConvert.h"
 
 #import "RCTLog.h"
 
 @implementation FileUpload
 
 RCT_EXPORT_MODULE();
+
+@synthesize bridge = _bridge;
 
 RCT_EXPORT_METHOD(upload:(NSDictionary *)obj callback:(RCTResponseSenderBlock)callback)
 {
@@ -18,8 +22,6 @@ RCT_EXPORT_METHOD(upload:(NSDictionary *)obj callback:(RCTResponseSenderBlock)ca
   NSDictionary *fields = obj[@"fields"];
   NSArray *files = obj[@"files"];
   NSString *method = obj[@"method"];
-  NSNumber *compress = obj[@"compress"];
-  NSNumber *scale = obj[@"scale"];
   
   if ([method isEqualToString:@"POST"] || [method isEqualToString:@"PUT"]) {
   } else {
@@ -72,38 +74,50 @@ RCT_EXPORT_METHOD(upload:(NSDictionary *)obj callback:(RCTResponseSenderBlock)ca
     NSString *filepath = file[@"filepath"];
     NSString *filetype = file[@"filetype"];
     
-    NSData *fileData = nil;
-    
-    NSLog(@"filepath: %@", filepath);
-    if ([filepath hasPrefix:@"assets-library:"]) {
-      NSURL *assetUrl = [[NSURL alloc] initWithString:filepath];
-      ALAssetsLibrary *library = [[ALAssetsLibrary alloc] init];
+    __block NSData *fileData = nil;
+    __block NSError *err = nil;
       
-      __block BOOL isFinished = NO;
-      __block NSData * tempData = nil;
-      [library assetForURL:assetUrl resultBlock:^(ALAsset *asset) {
-        ALAssetRepresentation *rep = [asset defaultRepresentation];
+    dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
+    
+    if ([filepath hasPrefix:@"assets-library:"] ||[filepath hasPrefix:@"rct-image-store"]) {
         
-        CGImageRef fullScreenImageRef = [rep fullScreenImage];
-        UIImage *image = [UIImage imageWithCGImage:fullScreenImageRef];
-        if (scale) {
-          image = [self scaledImage:image scale:[scale floatValue]];
+        [_bridge.imageLoader loadImageWithTag:filepath callback:^(NSError *error, UIImage *image) {
+            
+            if (error) {
+                err = error;
+            }
+            else {
+                NSDictionary *size = file[@"size"];
+                if (size) {
+                    CGFloat width = [RCTConvert float:size[@"width"]];
+                    CGFloat height = [RCTConvert float:size[@"height"]];
+                    CGFloat scale = 1.0;
+                    if (image.size.width>0 && image.size.height>0) {
+                        scale = MAX(width/(image.size.width *image.scale), height/(image.size.height * image.scale));
+                    }
+                    image = [self scaledImage:image scale:scale];
+                }
+                
+                BOOL png = [RCTConvert BOOL:file[@"png"]];
+                if (png) {
+                    fileData = UIImagePNGRepresentation(image);
+                }
+                else {
+                    CGFloat compress = [RCTConvert float:file[@"compress"]];
+                    if (compress == 0) {
+                        compress = 1.0f;
+                    }
+                    fileData = UIImageJPEGRepresentation(image, compress);
+                }
+            }
+            dispatch_semaphore_signal(semaphore);
+        }];
+        
+        dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
+        if (err) {
+            callback(@[err.description]);
         }
-        if (compress) {
-          tempData = UIImageJPEGRepresentation(image, [compress floatValue]);
-        }
-        else {
-          tempData = UIImageJPEGRepresentation(image, 1.0);
-        }
-        isFinished = YES;
-      } failureBlock:^(NSError *error) {
-        NSLog(@"ALAssetsLibrary assetForURL error:%@", error);
-        isFinished = YES;
-      }];
-      while (!isFinished) {
-        [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.01f]];
-      }
-      fileData = tempData;
+
     } else if ([filepath hasPrefix:@"data:"] || [filepath hasPrefix:@"file:"]) {
       NSURL *fileUrl = [[NSURL alloc] initWithString:filepath];
       fileData = [NSData dataWithContentsOfURL: fileUrl];
