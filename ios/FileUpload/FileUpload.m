@@ -4,10 +4,9 @@
 #import <MobileCoreServices/MobileCoreServices.h>
 #import <UIKit/UIKit.h>
 #import <AssetsLibrary/AssetsLibrary.h>
-#import "RCTImageLoader.h"
-#import "RCTConvert.h"
-
-#import "RCTLog.h"
+#import <React/RCTImageLoader.h>
+#import <React/RCTConvert.h>
+#import <React/RCTLog.h>
 
 @implementation FileUpload
 
@@ -81,7 +80,8 @@ RCT_EXPORT_METHOD(upload:(NSDictionary *)obj callback:(RCTResponseSenderBlock)ca
     
     if ([filepath hasPrefix:@"assets-library:"] ||[filepath hasPrefix:@"rct-image-store"]) {
         
-        [_bridge.imageLoader loadImageWithTag:filepath callback:^(NSError *error, UIImage *image) {
+        NSURLRequest *urlRequest = [NSURLRequest requestWithURL:[NSURL URLWithString:filepath]];
+        [_bridge.imageLoader loadImageWithURLRequest:urlRequest callback:^(NSError *error, UIImage *image) {
             
             if (error) {
                 err = error;
