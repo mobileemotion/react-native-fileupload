@@ -6,7 +6,9 @@
 //  Copyright © 2016年 erica. All rights reserved.
 //
 
-#import "RCTBridgeModule.h"
+#import <UIKit/UIKit.h>
+#import <sys/utsname.h>
+#import <React/RCTBridgeModule.h>
 
 @interface FileUpload : NSObject <RCTBridgeModule>
 @end
